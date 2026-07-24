@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { NextResponse } from "next/server";
 import { runTick } from "@/lib/tick";
 
@@ -14,6 +15,24 @@ export async function GET(request: Request) {
     if (auth !== `Bearer ${secret}`) {
       return unauthorized();
     }
+  }
+
+  const sync = new URL(request.url).searchParams.get("sync") === "1";
+
+  // External crons (e.g. cron-job.org free) often cap client wait at 30s.
+  // Return quickly and finish Agent work in the background on Vercel.
+  if (!sync) {
+    after(async () => {
+      try {
+        await runTick();
+      } catch (err) {
+        console.error("[tick] background failed", err);
+      }
+    });
+    return NextResponse.json(
+      { accepted: true, mode: "async" },
+      { status: 202 },
+    );
   }
 
   try {

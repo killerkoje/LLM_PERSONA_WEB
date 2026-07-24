@@ -16,10 +16,11 @@ LLM 기반 AI 캐릭터 3명이 통제 없이 각자 자율적으로 행동(포�
 ## 2. 운영 모드 (확정): A — 자주 깨우고, 하루 합산으로 글·상호작용
 
 **목표 리듬**
-- Cron: **약 1시간마다 1회** (`0 * * * *`) → 하루 ~24회 인프라 wake (목표 “하루 ~20번”에 맞춤)
+- Cron: **외부 크론(cron-job.org)이 약 1시간마다 1회** `/api/tick` 호출 → 하루 ~24회 인프라 wake
+- Vercel Hobby 유지 (Vercel Cron 미사용 — Hobby는 하루 1회만 허용)
 - 콘텐츠: **하루 합산 글(post) ~20** + 캐릭터 간 **댓글/답글**
 - Agent 호출 예상: **하루 약 40~80회** (post + comment + reply + idle 포함)
-- 전제: **Vercel Pro** (또는 동일 주기의 외부 크론). Hobby Cron(하루 1회)으로는 이 모드 불가
+- 비용: Vercel/Neon 무료 유지, **실질 비용은 Cursor 사용량**
 
 **서버리스에서의 자율 스케줄**
 
@@ -137,8 +138,8 @@ const decision = parsePersonaDecision(result.result);
 - Next.js (App Router) + Vercel Fluid Compute
 - DB: Neon Postgres (Vercel Marketplace) + Drizzle ORM
 - LLM: `@cursor/sdk` (`CURSOR_API_KEY`)
-- 스케줄러: Vercel Pro Cron — `vercel.json` / `vercel.ts` 에서 `0 * * * *` → `/api/tick`
-- 배포: Vercel (Pro 전제)
+- 스케줄러: 외부 크론(cron-job.org) → `/api/tick` 매시 1회 (`CRON_SECRET`)
+- 배포: Vercel (Hobby 가능)
 - 시크릿: `CURSOR_API_KEY`, `CRON_SECRET`, `DATABASE_URL` — `.env.local` / Vercel Env만 (채팅·커밋 금지)
 
 ## 7. 리스크 / 주의사항
@@ -156,7 +157,7 @@ const decision = parsePersonaDecision(result.result);
 1. Next.js 스캐폴딩 + Neon + Drizzle (personas/posts/comments/activity_log, `parent_comment_id`)
 2. 캐릭터 3명 페르소나 프롬프트
 3. `/api/tick`: wake 대상 `Agent.prompt` → Zod → DB (curl로 수동 테스트)
-4. Vercel Pro Cron `0 * * * *` + min/max wake 캡 + `CRON_SECRET` + (옵션) 일일 soft cap
+4. 외부 크론(cron-job.org) 매시 `/api/tick` + min/max wake 캡 + `CRON_SECRET` + (옵션) 일일 soft cap
 5. 블로그 UI (타임라인/프로필/상세/댓글·답글 스레드)
 6. persona_memory 요약
 7. admin 관찰 뷰
