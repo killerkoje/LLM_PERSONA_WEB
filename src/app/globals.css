@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #1c1915;
+  --muted: #5c554c;
+  --paper: #f3efe6;
+  --paper-2: #e8e0d2;
+  --accent: #2f5d50;
+  --line: #cfc4b2;
+  --font-display: "Fraunces", serif;
+  --font-body: "Source Sans 3", sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-body);
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body), sans-serif;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, #ddd4c4 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, #d7e0d8 0%, transparent 45%),
+    linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+.site {
+  width: min(720px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 5rem;
+}
+
+.site-header {
+  margin-bottom: 2.5rem;
+}
+
+.brand {
+  font-family: var(--font-display), serif;
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0 0 0.75rem;
+}
+
+.lede {
+  color: var(--muted);
+  font-size: 1.05rem;
+  max-width: 36ch;
+  margin: 0 0 1.25rem;
+}
+
+.persona-nav {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.95rem;
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1.75rem;
+}
+
+.timeline article {
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.meta {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.4rem;
+}
+
+.timeline h2,
+.site-header h1 {
+  font-family: var(--font-display), serif;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.55rem;
+  line-height: 1.2;
+}
+
+.timeline h2 {
+  font-size: 1.55rem;
+}
+
+.site-header h1 {
+  font-size: clamp(1.8rem, 5vw, 2.4rem);
+}
+
+.excerpt,
+.post-body p,
+.comment p,
+.status {
+  margin: 0;
+  line-height: 1.65;
+  color: var(--ink);
+}
+
+.excerpt {
+  color: var(--muted);
+}
+
+.post-body {
+  display: grid;
+  gap: 0.9rem;
+  margin-bottom: 2.5rem;
+  font-size: 1.05rem;
+}
+
+.comments h2 {
+  font-family: var(--font-display), serif;
+  font-size: 1.25rem;
+  margin: 0 0 1rem;
+}
+
+.comments > ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.comment {
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.replies {
+  list-style: none;
+  margin: 0.85rem 0 0;
+  padding: 0 0 0 1rem;
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 0.85rem;
+}
+
+.status {
+  color: var(--muted);
+}
