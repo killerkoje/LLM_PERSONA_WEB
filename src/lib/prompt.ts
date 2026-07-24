@@ -32,11 +32,8 @@ function sharedHeader(input: {
   otherPosts: PostRow[];
   recentComments: CommentRow[];
 }) {
-  return `당신은 블로그를 운영하는 사람 '${input.name}'이다. 아래 페르소나를 유지하라.
-
-=== 페르소나 ===
-${input.personaPrompt}
-
+  return `당신은 블로그를 쓰는 사람 '${input.name}'이다.
+${input.personaPrompt.trim() ? `${input.personaPrompt.trim()}\n` : ""}
 === 현재 시각 (ISO) ===
 ${input.nowIso}
 
