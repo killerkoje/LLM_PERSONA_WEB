@@ -1,8 +1,15 @@
 import { asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AppShell } from "@/components/AppShell";
+import { Avatar } from "@/components/Avatar";
 import { getDb } from "@/db";
 import { comments, personas, posts } from "@/db/schema";
+import {
+  avatarFor,
+  formatRelativeTime,
+  handleFor,
+} from "@/lib/persona-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +19,16 @@ export default async function PostPage({ params }: Props) {
   const { id } = await params;
   const db = getDb();
 
+  const people = await db
+    .select({
+      id: personas.id,
+      name: personas.name,
+      slug: personas.slug,
+      avatarUrl: personas.avatarUrl,
+    })
+    .from(personas)
+    .orderBy(personas.name);
+
   const [row] = await db
     .select({
       id: posts.id,
@@ -20,6 +37,7 @@ export default async function PostPage({ params }: Props) {
       createdAt: posts.createdAt,
       personaName: personas.name,
       personaSlug: personas.slug,
+      avatarUrl: personas.avatarUrl,
     })
     .from(posts)
     .innerJoin(personas, eq(posts.personaId, personas.id))
@@ -36,6 +54,7 @@ export default async function PostPage({ params }: Props) {
       parentCommentId: comments.parentCommentId,
       personaName: personas.name,
       personaSlug: personas.slug,
+      avatarUrl: personas.avatarUrl,
     })
     .from(comments)
     .innerJoin(personas, eq(comments.personaId, personas.id))
@@ -52,61 +71,98 @@ export default async function PostPage({ params }: Props) {
   }
 
   return (
-    <main className="site">
-      <header className="site-header">
-        <p className="brand">
-          <Link href="/">Night Desk</Link>
-        </p>
-        <p className="meta">
-          <Link href={`/persona/${row.personaSlug}`}>{row.personaName}</Link>
-          <time dateTime={row.createdAt.toISOString()}>
-            {row.createdAt.toLocaleString("ko-KR")}
-          </time>
-        </p>
-        <h1>{row.title}</h1>
-      </header>
+    <AppShell people={people} active="home">
+      <Link href="/" className="back-link">
+        ← 피드로
+      </Link>
 
-      <article className="post-body">
-        {row.content.split("\n").map((line, i) => (
-          <p key={i}>{line}</p>
-        ))}
+      <article className="post-detail">
+        <header className="feed-head">
+          <Avatar
+            slug={row.personaSlug}
+            name={row.personaName}
+            src={avatarFor(row.personaSlug, row.avatarUrl)}
+            size="md"
+          />
+          <div className="feed-head-text">
+            <Link href={`/persona/${row.personaSlug}`} className="username">
+              {handleFor(row.personaSlug, row.personaName)}
+            </Link>
+            <time dateTime={row.createdAt.toISOString()}>
+              {formatRelativeTime(row.createdAt)}
+            </time>
+          </div>
+        </header>
+
+        <h1>{row.title}</h1>
+        <div className="body">
+          {row.content.split("\n").map((line, i) => (
+            <p key={i}>{line || "\u00A0"}</p>
+          ))}
+        </div>
       </article>
 
       <section className="comments">
-        <h2>댓글</h2>
+        <h2>Comments</h2>
         {roots.length === 0 ? (
-          <p className="status">아직 댓글이 없습니다.</p>
+          <p className="empty" style={{ padding: "1rem 0" }}>
+            아직 댓글이 없습니다.
+          </p>
         ) : (
-          <ul>
+          <ul className="comment-list">
             {roots.map((c) => (
-              <li key={c.id} className="comment">
-                <p className="meta">
-                  <Link href={`/persona/${c.personaSlug}`}>{c.personaName}</Link>
-                  <time dateTime={c.createdAt.toISOString()}>
-                    {c.createdAt.toLocaleString("ko-KR")}
-                  </time>
-                </p>
-                <p>{c.content}</p>
-                <ul className="replies">
-                  {(byParent.get(c.id) ?? []).map((r) => (
-                    <li key={r.id}>
-                      <p className="meta">
-                        <Link href={`/persona/${r.personaSlug}`}>
-                          {r.personaName}
-                        </Link>
-                        <time dateTime={r.createdAt.toISOString()}>
-                          {r.createdAt.toLocaleString("ko-KR")}
-                        </time>
-                      </p>
-                      <p>{r.content}</p>
-                    </li>
-                  ))}
-                </ul>
+              <li key={c.id} className="comment-item">
+                <Avatar
+                  slug={c.personaSlug}
+                  name={c.personaName}
+                  src={avatarFor(c.personaSlug, c.avatarUrl)}
+                  size="sm"
+                />
+                <div className="comment-bubble">
+                  <div className="comment-meta">
+                    <Link
+                      href={`/persona/${c.personaSlug}`}
+                      className="username"
+                    >
+                      {handleFor(c.personaSlug, c.personaName)}
+                    </Link>
+                    <time dateTime={c.createdAt.toISOString()}>
+                      {formatRelativeTime(c.createdAt)}
+                    </time>
+                  </div>
+                  <p>{c.content}</p>
+                  <ul className="reply-list">
+                    {(byParent.get(c.id) ?? []).map((r) => (
+                      <li key={r.id} className="comment-item">
+                        <Avatar
+                          slug={r.personaSlug}
+                          name={r.personaName}
+                          src={avatarFor(r.personaSlug, r.avatarUrl)}
+                          size="sm"
+                        />
+                        <div className="comment-bubble">
+                          <div className="comment-meta">
+                            <Link
+                              href={`/persona/${r.personaSlug}`}
+                              className="username"
+                            >
+                              {handleFor(r.personaSlug, r.personaName)}
+                            </Link>
+                            <time dateTime={r.createdAt.toISOString()}>
+                              {formatRelativeTime(r.createdAt)}
+                            </time>
+                          </div>
+                          <p>{r.content}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </section>
-    </main>
+    </AppShell>
   );
 }

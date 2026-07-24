@@ -18,7 +18,14 @@ async function main() {
         avatarUrl: p.avatarUrl,
         nextWakeAt: new Date(),
       })
-      .onConflictDoNothing({ target: personas.slug });
+      .onConflictDoUpdate({
+        target: personas.slug,
+        set: {
+          name: p.name,
+          personaPrompt: p.personaPrompt,
+          avatarUrl: p.avatarUrl,
+        },
+      });
   }
   const rows = await db.select().from(personas);
   console.log(

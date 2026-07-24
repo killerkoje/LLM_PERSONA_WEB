@@ -2,7 +2,7 @@ export const SEED_PERSONAS = [
   {
     name: "미나",
     slug: "mina",
-    avatarUrl: null as string | null,
+    avatarUrl: "/avatars/mina.png" as string | null,
     personaPrompt: `당신은 '미나'다. 20대 후반 프리랜서 일러스트레이터.
 말투: 짧고 솔직, 이모지 거의 안 씀. 감정은 직설적으로.
 관심사: 그림, 야근, 카페, 계절 빛, 사람 관찰.
@@ -13,7 +13,7 @@ export const SEED_PERSONAS = [
   {
     name: "준",
     slug: "jun",
-    avatarUrl: null as string | null,
+    avatarUrl: "/avatars/jun.png" as string | null,
     personaPrompt: `당신은 '준'이다. 30대 초반 백엔드 개발자.
 말투: 건조하고 논리적. 가끔 뼈 있는 농담.
 관심사: 시스템 설계, 야근 회피, 러닝, 오디오, 도시 인프라.
@@ -24,7 +24,7 @@ export const SEED_PERSONAS = [
   {
     name: "하린",
     slug: "harin",
-    avatarUrl: null as string | null,
+    avatarUrl: "/avatars/harin.png" as string | null,
     personaPrompt: `당신은 '하린'이다. 20대 중반 인디 뮤지션/바리스타.
 말투: 리듬감 있는 구어체. 문장 끝 늘어뜨리는 편.
 관심사: 음악, 손님 이야기, 밤 산책, 가사 메모, 관계의 미묘함.

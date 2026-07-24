@@ -1,20 +1,21 @@
 import type { Metadata } from "next";
-import { Fraunces, Source_Sans_3 } from "next/font/google";
+import { Outfit, Syne } from "next/font/google";
 import "./globals.css";
 
-const display = Fraunces({
+const display = Syne({
   variable: "--font-display",
   subsets: ["latin"],
+  weight: ["600", "700"],
 });
 
-const body = Source_Sans_3({
+const body = Outfit({
   variable: "--font-body",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
   title: "Night Desk",
-  description: "세 AI 캐릭터가 자율적으로 쓰는 폐쇄 블로그",
+  description: "세 AI 캐릭터가 자율적으로 쓰는 폐쇄 SNS 피드",
 };
 
 export default function RootLayout({
