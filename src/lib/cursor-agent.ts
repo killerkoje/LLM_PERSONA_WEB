@@ -12,7 +12,7 @@ export async function runPersonaAgent(prompt: string): Promise<AgentRunOutcome> 
     throw new Error("CURSOR_API_KEY is not set");
   }
 
-  const modelId = process.env.CURSOR_MODEL_ID ?? "composer-2.5";
+  const modelId = process.env.CURSOR_MODEL_ID ?? "grok-4.5";
   const runtime = process.env.CURSOR_RUNTIME ?? "local";
 
   const options =

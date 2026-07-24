@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   activityLog,
@@ -8,10 +8,14 @@ import {
   personas,
   posts,
 } from "@/db/schema";
+import { isBillingHaltError, isBillingHaltText } from "@/lib/billing";
 import {
   DAILY_AGENT_SOFT_CAP,
   DAILY_POST_SOFT_CAP,
   RECENT_CONTEXT_LIMIT,
+  TICK_ACTIVE_HOUR_END,
+  TICK_ACTIVE_HOUR_START,
+  TICK_TZ,
   TICK_WAKE_MINUTES,
 } from "@/lib/constants";
 import { runPersonaAgent } from "@/lib/cursor-agent";
@@ -21,8 +25,27 @@ import {
 } from "@/lib/decision";
 import { buildInteractPrompt, buildPostPrompt } from "@/lib/prompt";
 
+const BILLING_HALT_ACTION = "billing_halt";
+
 function utcDay(d = new Date()): string {
   return d.toISOString().slice(0, 10);
+}
+
+/** Hour 0–23 in Asia/Seoul */
+function seoulHour(d = new Date()): number {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: TICK_TZ,
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(d),
+  );
+  return hour;
+}
+
+export function isWithinActiveHours(d = new Date()): boolean {
+  const hour = seoulHour(d);
+  return hour >= TICK_ACTIVE_HOUR_START && hour <= TICK_ACTIVE_HOUR_END;
 }
 
 async function bumpDaily(field: "postCount" | "agentCalls", by = 1) {
@@ -129,6 +152,34 @@ async function setWake(personaId: string) {
   return nextWakeAt;
 }
 
+function utcDayStart(d = new Date()): Date {
+  return new Date(`${utcDay(d)}T00:00:00.000Z`);
+}
+
+async function isBillingHaltedToday(): Promise<boolean> {
+  const db = getDb();
+  const [row] = await db
+    .select({ id: activityLog.id })
+    .from(activityLog)
+    .where(
+      and(
+        eq(activityLog.actionType, BILLING_HALT_ACTION),
+        gte(activityLog.createdAt, utcDayStart()),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+async function recordBillingHalt(personaId: string, detail: string) {
+  const db = getDb();
+  await db.insert(activityLog).values({
+    personaId,
+    actionType: BILLING_HALT_ACTION,
+    reasoning: detail.slice(0, 2000),
+  });
+}
+
 export type TickResult = {
   day: ReturnType<typeof utcDay>;
   daily: { postCount: number; agentCalls: number };
@@ -147,6 +198,24 @@ export async function runTick(): Promise<TickResult> {
   const now = new Date();
   const daily = await getDaily();
   const processed: TickResult["processed"] = [];
+
+  if (!isWithinActiveHours(now)) {
+    return {
+      day: utcDay(now),
+      daily,
+      processed,
+      skippedReason: `outside active hours (${TICK_TZ} ${String(TICK_ACTIVE_HOUR_START).padStart(2, "0")}:00–${String(TICK_ACTIVE_HOUR_END).padStart(2, "0")}:00)`,
+    };
+  }
+
+  if (await isBillingHaltedToday()) {
+    return {
+      day: utcDay(now),
+      daily,
+      processed,
+      skippedReason: "billing halt active (usage/quota)",
+    };
+  }
 
   if (daily.agentCalls >= DAILY_AGENT_SOFT_CAP) {
     return {
@@ -167,6 +236,23 @@ export async function runTick(): Promise<TickResult> {
   }
 
   const all = await db.select().from(personas).orderBy(personas.name);
+
+  const haltBilling = async (personaId: string, detail: string) => {
+    await recordBillingHalt(personaId, detail);
+    processed.push({
+      personaId,
+      name: all.find((p) => p.id === personaId)?.name ?? "?",
+      action: BILLING_HALT_ACTION,
+      nextWakeAt: (await setWake(personaId)).toISOString(),
+      error: detail,
+    });
+    return {
+      day: utcDay(now),
+      daily: await getDaily(),
+      processed,
+      skippedReason: "billing halt triggered (usage/quota)",
+    } satisfies TickResult;
+  };
 
   // Phase 1: every persona writes one post
   for (const persona of all) {
@@ -194,6 +280,10 @@ export async function runTick(): Promise<TickResult> {
       await bumpDaily("agentCalls");
 
       if (outcome.status !== "finished") {
+        const detail = `post agent status=${outcome.status} ${outcome.resultText}`.trim();
+        if (isBillingHaltText(detail)) {
+          return haltBilling(persona.id, detail);
+        }
         const nextWakeAt = await setWake(persona.id);
         await db.insert(activityLog).values({
           personaId: persona.id,
@@ -233,6 +323,14 @@ export async function runTick(): Promise<TickResult> {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (isBillingHaltError(err) || isBillingHaltText(message)) {
+        await db.insert(activityLog).values({
+          personaId: persona.id,
+          actionType: "error",
+          reasoning: `post: ${message}`.slice(0, 2000),
+        });
+        return haltBilling(persona.id, message);
+      }
       const nextWakeAt = await setWake(persona.id);
       await db.insert(activityLog).values({
         personaId: persona.id,
@@ -281,6 +379,10 @@ export async function runTick(): Promise<TickResult> {
       await bumpDaily("agentCalls");
 
       if (outcome.status !== "finished") {
+        const detail = `interact agent status=${outcome.status} ${outcome.resultText}`.trim();
+        if (isBillingHaltText(detail)) {
+          return haltBilling(persona.id, detail);
+        }
         const nextWakeAt = await setWake(persona.id);
         await db.insert(activityLog).values({
           personaId: persona.id,
@@ -367,6 +469,14 @@ export async function runTick(): Promise<TickResult> {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (isBillingHaltError(err) || isBillingHaltText(message)) {
+        await db.insert(activityLog).values({
+          personaId: persona.id,
+          actionType: "error",
+          reasoning: `interact: ${message}`.slice(0, 2000),
+        });
+        return haltBilling(persona.id, message);
+      }
       const nextWakeAt = await setWake(persona.id);
       await db.insert(activityLog).values({
         personaId: persona.id,
