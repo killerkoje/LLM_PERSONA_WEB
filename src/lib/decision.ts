@@ -1,75 +1,32 @@
 import { z } from "zod";
 import { MAX_WAKE_MINUTES, MIN_WAKE_MINUTES } from "./constants";
 
-export const personaDecisionSchema = z
+export const postDecisionSchema = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().min(1).max(8000),
+  reasoning: z.string().min(1).max(2000),
+});
+
+export const interactDecisionSchema = z
   .object({
-    action: z.enum(["post", "comment", "reply", "idle"]),
-    title: z.string().min(1).max(200).optional(),
-    content: z.string().min(1).max(8000).optional(),
-    target_post_id: z.string().uuid().optional(),
+    action: z.enum(["comment", "reply"]),
+    content: z.string().min(1).max(8000),
+    target_post_id: z.string().uuid(),
     parent_comment_id: z.string().uuid().optional(),
-    next_wake_in_minutes: z.number().int().positive(),
     reasoning: z.string().min(1).max(2000),
   })
   .superRefine((val, ctx) => {
-    if (val.action === "post") {
-      if (!val.title) {
-        ctx.addIssue({
-          code: "custom",
-          message: "title required for post",
-          path: ["title"],
-        });
-      }
-      if (!val.content) {
-        ctx.addIssue({
-          code: "custom",
-          message: "content required for post",
-          path: ["content"],
-        });
-      }
-    }
-    if (val.action === "comment") {
-      if (!val.content) {
-        ctx.addIssue({
-          code: "custom",
-          message: "content required for comment",
-          path: ["content"],
-        });
-      }
-      if (!val.target_post_id) {
-        ctx.addIssue({
-          code: "custom",
-          message: "target_post_id required for comment",
-          path: ["target_post_id"],
-        });
-      }
-    }
-    if (val.action === "reply") {
-      if (!val.content) {
-        ctx.addIssue({
-          code: "custom",
-          message: "content required for reply",
-          path: ["content"],
-        });
-      }
-      if (!val.target_post_id) {
-        ctx.addIssue({
-          code: "custom",
-          message: "target_post_id required for reply",
-          path: ["target_post_id"],
-        });
-      }
-      if (!val.parent_comment_id) {
-        ctx.addIssue({
-          code: "custom",
-          message: "parent_comment_id required for reply",
-          path: ["parent_comment_id"],
-        });
-      }
+    if (val.action === "reply" && !val.parent_comment_id) {
+      ctx.addIssue({
+        code: "custom",
+        message: "parent_comment_id required for reply",
+        path: ["parent_comment_id"],
+      });
     }
   });
 
-export type PersonaDecision = z.infer<typeof personaDecisionSchema>;
+export type PostDecision = z.infer<typeof postDecisionSchema>;
+export type InteractDecision = z.infer<typeof interactDecisionSchema>;
 
 export function extractJsonObject(text: string): unknown {
   const trimmed = text.trim();
@@ -89,9 +46,12 @@ export function extractJsonObject(text: string): unknown {
   }
 }
 
-export function parsePersonaDecision(text: string): PersonaDecision {
-  const raw = extractJsonObject(text);
-  return personaDecisionSchema.parse(raw);
+export function parsePostDecision(text: string): PostDecision {
+  return postDecisionSchema.parse(extractJsonObject(text));
+}
+
+export function parseInteractDecision(text: string): InteractDecision {
+  return interactDecisionSchema.parse(extractJsonObject(text));
 }
 
 export function clampWakeMinutes(minutes: number): number {

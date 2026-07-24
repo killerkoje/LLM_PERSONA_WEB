@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   activityLog,
@@ -12,14 +12,14 @@ import {
   DAILY_AGENT_SOFT_CAP,
   DAILY_POST_SOFT_CAP,
   RECENT_CONTEXT_LIMIT,
+  TICK_WAKE_MINUTES,
 } from "@/lib/constants";
 import { runPersonaAgent } from "@/lib/cursor-agent";
 import {
-  clampWakeMinutes,
-  parsePersonaDecision,
-  type PersonaDecision,
+  parseInteractDecision,
+  parsePostDecision,
 } from "@/lib/decision";
-import { buildPersonaPrompt } from "@/lib/prompt";
+import { buildInteractPrompt, buildPostPrompt } from "@/lib/prompt";
 
 function utcDay(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -119,85 +119,14 @@ async function loadContext(personaId: string) {
   };
 }
 
-async function applyDecision(
-  personaId: string,
-  decision: PersonaDecision,
-  meta: { runId?: string },
-) {
+async function setWake(personaId: string) {
   const db = getDb();
-  const wakeMinutes = clampWakeMinutes(decision.next_wake_in_minutes);
-  const nextWakeAt = new Date(Date.now() + wakeMinutes * 60_000);
-
-  let actionType = decision.action;
-
-  if (decision.action === "post" && decision.title && decision.content) {
-    await db.insert(posts).values({
-      personaId,
-      title: decision.title,
-      content: decision.content,
-    });
-    await bumpDaily("postCount");
-  } else if (
-    decision.action === "comment" &&
-    decision.content &&
-    decision.target_post_id
-  ) {
-    const [post] = await db
-      .select()
-      .from(posts)
-      .where(eq(posts.id, decision.target_post_id))
-      .limit(1);
-    if (!post) {
-      actionType = "idle";
-    } else {
-      await db.insert(comments).values({
-        postId: post.id,
-        personaId,
-        content: decision.content,
-        parentCommentId: null,
-      });
-    }
-  } else if (
-    decision.action === "reply" &&
-    decision.content &&
-    decision.target_post_id &&
-    decision.parent_comment_id
-  ) {
-    const [parent] = await db
-      .select()
-      .from(comments)
-      .where(
-        and(
-          eq(comments.id, decision.parent_comment_id),
-          eq(comments.postId, decision.target_post_id),
-        ),
-      )
-      .limit(1);
-    if (!parent) {
-      actionType = "idle";
-    } else {
-      await db.insert(comments).values({
-        postId: decision.target_post_id,
-        personaId,
-        parentCommentId: parent.id,
-        content: decision.content,
-      });
-    }
-  }
-
-  await db.insert(activityLog).values({
-    personaId,
-    actionType,
-    reasoning: decision.reasoning,
-    runId: meta.runId,
-  });
-
+  const nextWakeAt = new Date(Date.now() + TICK_WAKE_MINUTES * 60_000);
   await db
     .update(personas)
     .set({ nextWakeAt })
     .where(eq(personas.id, personaId));
-
-  return { actionType, nextWakeAt, wakeMinutes };
+  return nextWakeAt;
 }
 
 export type TickResult = {
@@ -217,35 +146,41 @@ export async function runTick(): Promise<TickResult> {
   const db = getDb();
   const now = new Date();
   const daily = await getDaily();
+  const processed: TickResult["processed"] = [];
 
   if (daily.agentCalls >= DAILY_AGENT_SOFT_CAP) {
     return {
       day: utcDay(now),
       daily,
-      processed: [],
+      processed,
       skippedReason: "daily agent soft cap reached",
     };
   }
 
-  const due = await db
-    .select()
-    .from(personas)
-    .where(lte(personas.nextWakeAt, now))
-    .orderBy(personas.nextWakeAt);
+  if (daily.postCount >= DAILY_POST_SOFT_CAP) {
+    return {
+      day: utcDay(now),
+      daily,
+      processed,
+      skippedReason: "daily post soft cap reached",
+    };
+  }
 
-  const processed: TickResult["processed"] = [];
+  const all = await db.select().from(personas).orderBy(personas.name);
 
-  // Prefer interaction order: process due personas sequentially
-  for (const persona of due) {
+  // Phase 1: every persona writes one post
+  for (const persona of all) {
     const latestDaily = await getDaily();
-    if (latestDaily.agentCalls >= DAILY_AGENT_SOFT_CAP) break;
-
-    const forceIdlePost =
-      latestDaily.postCount >= DAILY_POST_SOFT_CAP ? true : false;
+    if (
+      latestDaily.agentCalls >= DAILY_AGENT_SOFT_CAP ||
+      latestDaily.postCount >= DAILY_POST_SOFT_CAP
+    ) {
+      break;
+    }
 
     try {
       const ctx = await loadContext(persona.id);
-      const prompt = buildPersonaPrompt({
+      const prompt = buildPostPrompt({
         name: persona.name,
         personaPrompt: persona.personaPrompt,
         nowIso: now.toISOString(),
@@ -253,23 +188,17 @@ export async function runTick(): Promise<TickResult> {
         ownPosts: ctx.ownPosts,
         otherPosts: ctx.otherPosts,
         recentComments: ctx.recentComments,
-        dailyPostCount: latestDaily.postCount,
-        dailyPostSoftCap: DAILY_POST_SOFT_CAP,
       });
 
       const outcome = await runPersonaAgent(prompt);
       await bumpDaily("agentCalls");
 
       if (outcome.status !== "finished") {
-        const nextWakeAt = new Date(Date.now() + MIN_FALLBACK_MS);
-        await db
-          .update(personas)
-          .set({ nextWakeAt })
-          .where(eq(personas.id, persona.id));
+        const nextWakeAt = await setWake(persona.id);
         await db.insert(activityLog).values({
           personaId: persona.id,
           actionType: "error",
-          reasoning: `agent status=${outcome.status}`,
+          reasoning: `post agent status=${outcome.status}`,
           runId: outcome.runId,
         });
         processed.push({
@@ -277,43 +206,172 @@ export async function runTick(): Promise<TickResult> {
           name: persona.name,
           action: "error",
           nextWakeAt: nextWakeAt.toISOString(),
-          error: `agent status=${outcome.status}`,
+          error: `post agent status=${outcome.status}`,
         });
         continue;
       }
 
-      let decision = parsePersonaDecision(outcome.resultText);
-      if (forceIdlePost && decision.action === "post") {
-        decision = {
-          ...decision,
-          action: "idle",
-          title: undefined,
-          content: undefined,
-          reasoning: `${decision.reasoning} (soft post cap → idle)`,
-        };
-      }
-
-      const applied = await applyDecision(persona.id, decision, {
+      const decision = parsePostDecision(outcome.resultText);
+      await db.insert(posts).values({
+        personaId: persona.id,
+        title: decision.title,
+        content: decision.content,
+      });
+      await bumpDaily("postCount");
+      await db.insert(activityLog).values({
+        personaId: persona.id,
+        actionType: "post",
+        reasoning: decision.reasoning,
         runId: outcome.runId,
       });
-
+      const nextWakeAt = await setWake(persona.id);
       processed.push({
         personaId: persona.id,
         name: persona.name,
-        action: applied.actionType,
-        nextWakeAt: applied.nextWakeAt.toISOString(),
+        action: "post",
+        nextWakeAt: nextWakeAt.toISOString(),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      const nextWakeAt = new Date(Date.now() + MIN_FALLBACK_MS);
-      await db
-        .update(personas)
-        .set({ nextWakeAt })
-        .where(eq(personas.id, persona.id));
+      const nextWakeAt = await setWake(persona.id);
       await db.insert(activityLog).values({
         personaId: persona.id,
         actionType: "error",
-        reasoning: message.slice(0, 2000),
+        reasoning: `post: ${message}`.slice(0, 2000),
+      });
+      processed.push({
+        personaId: persona.id,
+        name: persona.name,
+        action: "error",
+        nextWakeAt: nextWakeAt.toISOString(),
+        error: message,
+      });
+    }
+  }
+
+  // Phase 2: every persona comments/replies on someone else
+  for (const persona of all) {
+    const latestDaily = await getDaily();
+    if (latestDaily.agentCalls >= DAILY_AGENT_SOFT_CAP) break;
+
+    try {
+      const ctx = await loadContext(persona.id);
+      if (ctx.otherPosts.length === 0) {
+        processed.push({
+          personaId: persona.id,
+          name: persona.name,
+          action: "idle",
+          nextWakeAt: (await setWake(persona.id)).toISOString(),
+          error: "no other posts to interact with",
+        });
+        continue;
+      }
+
+      const prompt = buildInteractPrompt({
+        name: persona.name,
+        personaPrompt: persona.personaPrompt,
+        nowIso: now.toISOString(),
+        memorySummary: ctx.memorySummary,
+        ownPosts: ctx.ownPosts,
+        otherPosts: ctx.otherPosts,
+        recentComments: ctx.recentComments,
+      });
+
+      const outcome = await runPersonaAgent(prompt);
+      await bumpDaily("agentCalls");
+
+      if (outcome.status !== "finished") {
+        const nextWakeAt = await setWake(persona.id);
+        await db.insert(activityLog).values({
+          personaId: persona.id,
+          actionType: "error",
+          reasoning: `interact agent status=${outcome.status}`,
+          runId: outcome.runId,
+        });
+        processed.push({
+          personaId: persona.id,
+          name: persona.name,
+          action: "error",
+          nextWakeAt: nextWakeAt.toISOString(),
+          error: `interact agent status=${outcome.status}`,
+        });
+        continue;
+      }
+
+      const decision = parseInteractDecision(outcome.resultText);
+      let actionType: "comment" | "reply" | "idle" = decision.action;
+
+      if (decision.action === "comment") {
+        const [post] = await db
+          .select()
+          .from(posts)
+          .where(
+            and(
+              eq(posts.id, decision.target_post_id),
+              ne(posts.personaId, persona.id),
+            ),
+          )
+          .limit(1);
+        if (!post) {
+          actionType = "idle";
+        } else {
+          await db.insert(comments).values({
+            postId: post.id,
+            personaId: persona.id,
+            content: decision.content,
+            parentCommentId: null,
+          });
+        }
+      } else if (decision.parent_comment_id) {
+        const [parent] = await db
+          .select()
+          .from(comments)
+          .where(
+            and(
+              eq(comments.id, decision.parent_comment_id),
+              eq(comments.postId, decision.target_post_id),
+            ),
+          )
+          .limit(1);
+        const [post] = await db
+          .select()
+          .from(posts)
+          .where(eq(posts.id, decision.target_post_id))
+          .limit(1);
+        if (!parent || !post || post.personaId === persona.id) {
+          actionType = "idle";
+        } else {
+          await db.insert(comments).values({
+            postId: decision.target_post_id,
+            personaId: persona.id,
+            parentCommentId: parent.id,
+            content: decision.content,
+          });
+        }
+      } else {
+        actionType = "idle";
+      }
+
+      await db.insert(activityLog).values({
+        personaId: persona.id,
+        actionType,
+        reasoning: decision.reasoning,
+        runId: outcome.runId,
+      });
+      const nextWakeAt = await setWake(persona.id);
+      processed.push({
+        personaId: persona.id,
+        name: persona.name,
+        action: actionType,
+        nextWakeAt: nextWakeAt.toISOString(),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const nextWakeAt = await setWake(persona.id);
+      await db.insert(activityLog).values({
+        personaId: persona.id,
+        actionType: "error",
+        reasoning: `interact: ${message}`.slice(0, 2000),
       });
       processed.push({
         personaId: persona.id,
@@ -331,5 +389,3 @@ export async function runTick(): Promise<TickResult> {
     processed,
   };
 }
-
-const MIN_FALLBACK_MS = 45 * 60_000;

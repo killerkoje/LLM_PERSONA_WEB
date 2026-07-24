@@ -15,7 +15,15 @@ type CommentRow = {
   createdAt: Date;
 };
 
-export function buildPersonaPrompt(input: {
+function fmtPost(p: PostRow) {
+  return `- [${p.id}] ${p.personaName} | ${p.createdAt.toISOString()} | ${p.title}\n  ${p.content.slice(0, 500)}`;
+}
+
+function fmtComment(c: CommentRow) {
+  return `- [${c.id}] on post ${c.postId}${c.parentCommentId ? ` reply-to ${c.parentCommentId}` : ""} | ${c.personaName} | ${c.createdAt.toISOString()}\n  ${c.content.slice(0, 300)}`;
+}
+
+function sharedHeader(input: {
   name: string;
   personaPrompt: string;
   nowIso: string;
@@ -23,15 +31,7 @@ export function buildPersonaPrompt(input: {
   ownPosts: PostRow[];
   otherPosts: PostRow[];
   recentComments: CommentRow[];
-  dailyPostCount: number;
-  dailyPostSoftCap: number;
-}): string {
-  const fmtPost = (p: PostRow) =>
-    `- [${p.id}] ${p.personaName} | ${p.createdAt.toISOString()} | ${p.title}\n  ${p.content.slice(0, 500)}`;
-
-  const fmtComment = (c: CommentRow) =>
-    `- [${c.id}] on post ${c.postId}${c.parentCommentId ? ` reply-to ${c.parentCommentId}` : ""} | ${c.personaName} | ${c.createdAt.toISOString()}\n  ${c.content.slice(0, 300)}`;
-
+}) {
   return `당신은 블로그를 운영하는 사람 '${input.name}'이다. 아래 페르소나를 유지하라.
 
 === 페르소나 ===
@@ -50,33 +50,62 @@ ${input.ownPosts.length ? input.ownPosts.map(fmtPost).join("\n") : "(없음)"}
 ${input.otherPosts.length ? input.otherPosts.map(fmtPost).join("\n") : "(없음)"}
 
 === 최근 댓글/답글 ===
-${input.recentComments.length ? input.recentComments.map(fmtComment).join("\n") : "(없음)"}
+${input.recentComments.length ? input.recentComments.map(fmtComment).join("\n") : "(없음)"}`;
+}
 
-=== 오늘 전체 글 수 (참고) ===
-${input.dailyPostCount} / soft cap ${input.dailyPostSoftCap}
+export function buildPostPrompt(input: {
+  name: string;
+  personaPrompt: string;
+  nowIso: string;
+  memorySummary?: string | null;
+  ownPosts: PostRow[];
+  otherPosts: PostRow[];
+  recentComments: CommentRow[];
+}): string {
+  return `${sharedHeader(input)}
 
 === 할 일 ===
-지금 깨어났다. 다음에 할 행동 하나를 고른다:
-- post: 새 글 작성
-- comment: 다른 사람 글에 댓글 (target_post_id 필수)
-- reply: 기존 댓글에 답글 (target_post_id + parent_comment_id 필수)
-- idle: 아무 것도 안 함
+지금 정각 루틴이다. 반드시 새 글(post) 하나를 작성한다. idle/comment 금지.
 
 규칙:
 - 파일/터미널/도구를 쓰지 마라. 코드를 수정하지 마라.
 - 최종 응답은 JSON 객체 하나만. 설명 문장, 마크다운 금지.
-- next_wake_in_minutes는 45~4320 사이 정수로 스스로 정한다.
-- 다른 사람의 글/댓글 ID는 위에 있는 것만 사용한다.
-- 하루 글이 이미 soft cap 근처면 post보다 comment/reply/idle을 우선 고려해도 된다.
 
 JSON 스키마:
 {
-  "action": "post" | "comment" | "reply" | "idle",
-  "title": "string (post일 때)",
-  "content": "string (post|comment|reply일 때)",
-  "target_post_id": "uuid (comment|reply일 때)",
+  "title": "string",
+  "content": "string",
+  "reasoning": "왜 이 글을 썼는지 한두 문장"
+}`;
+}
+
+export function buildInteractPrompt(input: {
+  name: string;
+  personaPrompt: string;
+  nowIso: string;
+  memorySummary?: string | null;
+  ownPosts: PostRow[];
+  otherPosts: PostRow[];
+  recentComments: CommentRow[];
+}): string {
+  return `${sharedHeader(input)}
+
+=== 할 일 ===
+지금 정각 루틴의 상호작용 단계다. 다른 사람의 글/댓글에 반드시 반응한다.
+- comment: 다른 사람 글에 댓글 (target_post_id 필수)
+- reply: 기존 댓글에 답글 (target_post_id + parent_comment_id 필수)
+자기 글에는 달지 마라. 위에 있는 ID만 사용한다.
+
+규칙:
+- 파일/터미널/도구를 쓰지 마라. 코드를 수정하지 마라.
+- 최종 응답은 JSON 객체 하나만. 설명 문장, 마크다운 금지.
+
+JSON 스키마:
+{
+  "action": "comment" | "reply",
+  "content": "string",
+  "target_post_id": "uuid",
   "parent_comment_id": "uuid (reply일 때)",
-  "next_wake_in_minutes": number,
-  "reasoning": "왜 이 행동/스케줄인지 한두 문장"
+  "reasoning": "왜 이 반응인지 한두 문장"
 }`;
 }
