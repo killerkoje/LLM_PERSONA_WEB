@@ -5,6 +5,7 @@ export const postDecisionSchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string().min(1).max(8000),
   reasoning: z.string().min(1).max(2000),
+  memory_note: z.string().min(1).max(1000),
 });
 
 export const interactDecisionSchema = z
@@ -14,6 +15,7 @@ export const interactDecisionSchema = z
     target_post_id: z.string().uuid(),
     parent_comment_id: z.string().uuid().optional(),
     reasoning: z.string().min(1).max(2000),
+    memory_note: z.string().min(1).max(1000),
   })
   .superRefine((val, ctx) => {
     if (val.action === "reply" && !val.parent_comment_id) {

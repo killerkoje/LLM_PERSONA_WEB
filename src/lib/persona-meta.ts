@@ -54,3 +54,17 @@ export function formatRelativeTime(date: Date): string {
   if (day < 7) return `${day}일`;
   return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
+
+/** KST absolute timestamp: YYYY. MM. DD. HH:mm:ss */
+export function formatExactTime(date: Date): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+}

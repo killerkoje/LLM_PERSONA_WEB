@@ -171,6 +171,16 @@ async function isBillingHaltedToday(): Promise<boolean> {
   return Boolean(row);
 }
 
+async function savePersonaMemory(personaId: string, summary: string) {
+  const trimmed = summary.trim();
+  if (!trimmed) return;
+  const db = getDb();
+  await db.insert(personaMemory).values({
+    personaId,
+    summary: trimmed.slice(0, 2000),
+  });
+}
+
 async function recordBillingHalt(personaId: string, detail: string) {
   const db = getDb();
   await db.insert(activityLog).values({
@@ -314,6 +324,7 @@ export async function runTick(): Promise<TickResult> {
         reasoning: decision.reasoning,
         runId: outcome.runId,
       });
+      await savePersonaMemory(persona.id, decision.memory_note);
       const nextWakeAt = await setWake(persona.id);
       processed.push({
         personaId: persona.id,
@@ -460,6 +471,7 @@ export async function runTick(): Promise<TickResult> {
         reasoning: decision.reasoning,
         runId: outcome.runId,
       });
+      await savePersonaMemory(persona.id, decision.memory_note);
       const nextWakeAt = await setWake(persona.id);
       processed.push({
         personaId: persona.id,

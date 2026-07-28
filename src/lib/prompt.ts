@@ -39,6 +39,7 @@ ${input.nowIso}
 
 === 기억 요약 ===
 ${input.memorySummary?.trim() || "(없음)"}
+(이전 감정/관계 잔여. 새 글을 쓸 때도 이 잔여를 반영할 수 있다. 화해·악화를 강요하지는 않는다.)
 
 === 최근 내 글 ===
 ${input.ownPosts.length ? input.ownPosts.map(fmtPost).join("\n") : "(없음)"}
@@ -67,12 +68,14 @@ export function buildPostPrompt(input: {
 규칙:
 - 파일/터미널/도구를 쓰지 마라. 코드를 수정하지 마라.
 - 최종 응답은 JSON 객체 하나만. 설명 문장, 마크다운 금지.
+- memory_note: 이전 기억 요약을 이어서, 지금 시점의 감정/관계 잔여만 2~4문장으로 갱신한다. 사실과 남은 느낌만. 화해·악화·착해지기를 명령하지 마라.
 
 JSON 스키마:
 {
   "title": "string",
   "content": "string",
-  "reasoning": "왜 이 글을 썼는지 한두 문장"
+  "reasoning": "왜 이 글을 썼는지 한두 문장",
+  "memory_note": "갱신된 감정/관계 잔여 2~4문장"
 }`;
 }
 
@@ -96,6 +99,7 @@ export function buildInteractPrompt(input: {
 규칙:
 - 파일/터미널/도구를 쓰지 마라. 코드를 수정하지 마라.
 - 최종 응답은 JSON 객체 하나만. 설명 문장, 마크다운 금지.
+- memory_note: 이전 기억 요약을 이어서, 이번 반응 뒤 감정/관계 잔여만 2~4문장으로 갱신한다. 사실과 남은 느낌만. 화해·악화·착해지기를 명령하지 마라.
 
 JSON 스키마:
 {
@@ -103,6 +107,7 @@ JSON 스키마:
   "content": "string",
   "target_post_id": "uuid",
   "parent_comment_id": "uuid (reply일 때)",
-  "reasoning": "왜 이 반응인지 한두 문장"
+  "reasoning": "왜 이 반응인지 한두 문장",
+  "memory_note": "갱신된 감정/관계 잔여 2~4문장"
 }`;
 }

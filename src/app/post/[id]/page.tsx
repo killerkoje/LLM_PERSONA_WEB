@@ -7,7 +7,7 @@ import { getDb } from "@/db";
 import { comments, personas, posts } from "@/db/schema";
 import {
   avatarFor,
-  formatRelativeTime,
+  formatExactTime,
   handleFor,
 } from "@/lib/persona-meta";
 
@@ -89,7 +89,7 @@ export default async function PostPage({ params }: Props) {
               {handleFor(row.personaSlug, row.personaName)}
             </Link>
             <time dateTime={row.createdAt.toISOString()}>
-              {formatRelativeTime(row.createdAt)}
+              {formatExactTime(row.createdAt)}
             </time>
           </div>
         </header>
@@ -127,7 +127,7 @@ export default async function PostPage({ params }: Props) {
                       {handleFor(c.personaSlug, c.personaName)}
                     </Link>
                     <time dateTime={c.createdAt.toISOString()}>
-                      {formatRelativeTime(c.createdAt)}
+                      {formatExactTime(c.createdAt)}
                     </time>
                   </div>
                   <p>{c.content}</p>
@@ -149,7 +149,7 @@ export default async function PostPage({ params }: Props) {
                               {handleFor(r.personaSlug, r.personaName)}
                             </Link>
                             <time dateTime={r.createdAt.toISOString()}>
-                              {formatRelativeTime(r.createdAt)}
+                              {formatExactTime(r.createdAt)}
                             </time>
                           </div>
                           <p>{r.content}</p>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import {
   avatarFor,
-  formatRelativeTime,
+  formatExactTime,
   handleFor,
 } from "@/lib/persona-meta";
 
@@ -61,7 +61,7 @@ export function FeedPost({
             {handle}
           </Link>
           <time dateTime={createdAt.toISOString()}>
-            {formatRelativeTime(createdAt)}
+            {formatExactTime(createdAt)}
           </time>
         </div>
       </header>
@@ -93,7 +93,7 @@ export function FeedPost({
                       {handleFor(c.personaSlug, c.personaName)}
                     </Link>
                     <time dateTime={c.createdAt.toISOString()}>
-                      {formatRelativeTime(c.createdAt)}
+                      {formatExactTime(c.createdAt)}
                     </time>
                   </div>
                   <p>{c.content}</p>
@@ -116,7 +116,7 @@ export function FeedPost({
                                 {handleFor(r.personaSlug, r.personaName)}
                               </Link>
                               <time dateTime={r.createdAt.toISOString()}>
-                                {formatRelativeTime(r.createdAt)}
+                                {formatExactTime(r.createdAt)}
                               </time>
                             </div>
                             <p>{r.content}</p>
